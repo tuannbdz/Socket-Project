@@ -2,7 +2,7 @@ from socket import *
 serverName = 'example.com'
 serverPort = 80
 MAXBUF = 1024
-print('ok con de')
+
 clientSocket = socket(AF_INET, SOCK_STREAM)
 clientSocket.connect((serverName, serverPort))
 requestMessage = "GET /index.html HTTP/1.1\r\n"
