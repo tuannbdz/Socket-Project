@@ -1,11 +1,13 @@
-from socket import *
+import socket
 import sys
+import os
 
-MAXBUF = 1024
+MAXBUF = 2048
 serverPort = 80
 
 def clientConnect(serverName):
-    clientSocket = socket(AF_INET, SOCK_STREAM)
+    clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    clientSocket.settimeout(5)
     clientSocket.connect((serverName, serverPort))
     print("Connect successfully")
     return clientSocket
@@ -17,11 +19,10 @@ def clientRequest(clientSocket, requestURL, serverName):
     requestMessage += hostName
     requestMessage += connectionType
     requestMessage += "\r\n"
-    clientSocket.settimeout(2)
+    
     iResult = clientSocket.send(requestMessage.encode())
     print("Request message: ", requestMessage)
     print("Byte send: ", iResult)
-
 
 def messageReceive(clientSocket):
     fragments = []
@@ -43,40 +44,94 @@ def messageReceive(clientSocket):
                     remain = (fileLen - offset)
                     cntByteRecv = 0
                     while cntByteRecv < remain:
-                        chunk = clientSocket.recv(remain - cntByteRecv)
+                        chunk = clientSocket.recv(min(MAXBUF, remain - cntByteRecv))
                         cntByteRecv += len(chunk)
                         fragments.append(chunk)
-                        print('Downloading ', cntByteRecv / remain * 100, '%')
+                        print('Downloading ', round(cntByteRecv / remain * 100, 2) , '%')
                 print("Finish receiving data...")
                 break
-        elif (temp.find(b'Transfer-Encoding: Chunked')) >= 0:
-            break
+        elif (temp.find(b'Transfer-Encoding: chunked')) >= 0:
+            # print(firstChunk)
+            temp = temp.split(b'\r\n\r\n')
+            # header = temp[0]
+            print(header.decode())
+            chunkSize = temp[1].split(b'\r\n')[0]
+            recvSize = len(firstChunk) - (len(header) + 4 + len(chunkSize) + 2)
+            print(chunkSize, recvSize)
+            # if recvSize >= chunkSize:
+            
+            # print(chunkSize)
+            # while chunkSize != 0:
+            sys.exit(0)
+        else: break
     result = b''.join(fragments)
     return result
 
-def writeData(receiveMessage, serverName, fileName):
+def writeData(receiveMessage, fileName):
     receiveMessage = receiveMessage.split(b'\r\n\r\n')
     headers = receiveMessage[0]
     data = b''
     for i in range(1, len(receiveMessage)):
         data += receiveMessage[i]
-    print(headers)
-    # print(data)
-    f = open(serverName + '_' + fileName, "wb")
+    # print(headers.decode())
+    # print(data.decode())
+    fileName = fileName.replace('%20', ' ')
+    f = open(fileName, "wb")
     f.write(data)
     f.close()
 
-if __name__ == '__main__':
-    requestURL = sys.argv[1]
+def parseRequest(requestURL):
     if(requestURL[-1] != '/'):
         requestURL += '/'
     serverName = requestURL[requestURL.find('//') + 2 : requestURL.find('/', requestURL.find('//') + 2)]
     fileName = requestURL.split('/')[-2]
     if(fileName == serverName):
         fileName = 'index.html'
+    isFolder = (fileName.find('.') == -1)
     requestURL = requestURL[:-1]
-    clientSocket = clientConnect(serverName)
-    clientRequest(clientSocket, requestURL, serverName)
-    receiveMessage = messageReceive(clientSocket)
-    writeData(receiveMessage, serverName, fileName)
-    clientSocket.close()
+    return (serverName, fileName, isFolder)
+
+def readSubFolder(clientSocket, recvMessage):
+    queue = []
+    data = recvMessage.split(b'\r\n\r\n')[1]
+    for line in data.split(b'\n'):
+        if(line.find(b'href=') >= 0):
+            begPos = line.find(b'\"', line.find(b'href='))
+            endPos = line.find(b'\"', begPos + 1)
+            fileName = line[begPos + 1 : endPos]
+            if(fileName.find(b'.') >= 0):
+                queue.append(fileName)
+    return queue
+
+
+if __name__ == '__main__':
+    requestURL = sys.argv[1]
+    serverName, fileName, isFolder = parseRequest(requestURL)
+    try:
+        clientSocket = clientConnect(serverName)
+        clientRequest(clientSocket, requestURL, serverName)
+        receiveMessage = messageReceive(clientSocket)
+        # print(receiveMessage.decode())
+        # print('isFolder = ', isFolder   )
+        if(isFolder == False):
+            writeData(receiveMessage, serverName + '_' + fileName)
+        else:
+            folderName = serverName + '_' + fileName
+            if(os.path.isdir(folderName) == False):
+                os.mkdir(serverName + '_' + fileName)
+            os.chdir(folderName)
+            writeData(receiveMessage, 'index.html')
+            URLqueue = readSubFolder(clientSocket, receiveMessage)
+            for request in URLqueue:
+                t = clientSocket.recv(1)
+                clientRequest(clientSocket, requestURL + request.decode(), serverName)
+                msg = messageReceive(clientSocket)
+                writeData(msg, request.decode())
+
+    except KeyboardInterrupt:
+        clientSocket.close()
+    # except:
+    #     print('Connection error!')
+    #     clientSocket.close()
+    finally:
+        clientSocket.close()
