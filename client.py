@@ -2,7 +2,7 @@ import socket
 import sys
 import os
 
-MAXBUF = 2048
+MAXBUF = 8192
 serverPort = 80
 
 def clientConnect(serverName):
@@ -25,46 +25,67 @@ def clientRequest(clientSocket, requestURL, serverName):
     print("Byte send: ", iResult)
 
 def messageReceive(clientSocket):
-    fragments = []
+    dataChunks = []
     while True:
         firstChunk = clientSocket.recv(MAXBUF)
-        fragments.append(firstChunk)
-        temp = firstChunk
-        if(len(temp) == 0):
+        rollingBuffer = firstChunk
+        if(len(rollingBuffer) == 0):
             break
-        if(temp.find(b'Content-Length') >= 0):
-            posHeader = temp.find(b'Content-Length') + 15
-            fileLen = int(temp[posHeader : temp.find(b'\r\n', posHeader)])
+        if(rollingBuffer.find(b'Content-Length') >= 0):
+            dataChunks.append(firstChunk)
+            posHeader = rollingBuffer.find(b'Content-Length') + 15
+            fileLen = int(rollingBuffer[posHeader : rollingBuffer.find(b'\r\n', posHeader)])
             print('fileLen: ', fileLen)
             offset = 0
-            if temp.find(b'\r\n\r\n'):
-                BodyBegin = temp.find(b'\r\n\r\n') + 4
+            if rollingBuffer.find(b'\r\n\r\n'):
+                BodyBegin = rollingBuffer.find(b'\r\n\r\n') + 4
                 offset = len(firstChunk) - BodyBegin + 1
                 if offset != fileLen:
                     remain = (fileLen - offset)
                     cntByteRecv = 0
                     while cntByteRecv < remain:
-                        chunk = clientSocket.recv(min(MAXBUF, remain - cntByteRecv))
+                        chunk = clientSocket.recv(min(2048, remain - cntByteRecv))
                         cntByteRecv += len(chunk)
-                        fragments.append(chunk)
+                        dataChunks.append(chunk)
                         print('Downloading ', round(cntByteRecv / remain * 100, 2) , '%')
                 print("Finish receiving data...")
                 break
-        elif (temp.find(b'Transfer-Encoding: chunked')) >= 0:
-            # print(firstChunk)
-            temp = temp.split(b'\r\n\r\n')
-            # header = temp[0]
-            print(header.decode())
-            chunkSize = temp[1].split(b'\r\n')[0]
-            recvSize = len(firstChunk) - (len(header) + 4 + len(chunkSize) + 2)
-            print(chunkSize, recvSize)
-            # if recvSize >= chunkSize:
-            
-            # print(chunkSize)
-            # while chunkSize != 0:
-            sys.exit(0)
+        elif (rollingBuffer.find(b'Transfer-Encoding: chunked')) >= 0:
+            #append header
+            dataChunks.append(rollingBuffer[:rollingBuffer.find(b'\r\n\r\n')] + b'\r\n\r\n')
+
+            headerEndingPosition = rollingBuffer.find(b'\r\n\r\n') + len(b'\r\n\r\n')
+            rollingBuffer = rollingBuffer[headerEndingPosition:]
+            #get the position (actually the position just after the final bit of the size number) of the first chunk size number within the file
+            chunkSizePosition = rollingBuffer.find(b'\r\n')
+            #get the first chunk's size
+            chunkSize = int(rollingBuffer[:chunkSizePosition].decode(), 16)
+            #remove the size (also remove the following \r\n
+            rollingBuffer = rollingBuffer[(chunkSizePosition + len(b'\r\n')):]
+            print(chunkSize, rollingBuffer)
+            while True:
+                # the end message is encountered
+                if chunkSize == 0:
+                    break
+                chunk = clientSocket.recv(2048)
+                #append the chunk to the buffer
+                rollingBuffer += chunk
+                #if the buffer has now have the full chunk in question
+                if len(rollingBuffer) >= chunkSize:
+                    #append the whole chunk onto the data chunks
+                    dataChunks.append(rollingBuffer[:chunkSize])
+                    #remove the chunk from the buffer (along with the trailing \r\n)
+                    rollingBuffer = rollingBuffer[(chunkSize + len(b'\r\n')):]
+                    #get the position after the last bit of the next chunk size number
+                    chunkSizePosition = rollingBuffer.find(b'\r\n')
+                    #get the next chunk's size
+                    chunkSize = int(rollingBuffer[:chunkSizePosition].decode(), 16)
+                    #remove the chunk size number (along with the \r\n) from the buffer
+                    rollingBuffer = rollingBuffer[(chunkSizePosition + len(b'\r\n')):]
+            break
         else: break
-    result = b''.join(fragments)
+    result = b''.join(dataChunks)
+    print(result)
     return result
 
 def writeData(receiveMessage, fileName):
