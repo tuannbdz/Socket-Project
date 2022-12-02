@@ -84,6 +84,8 @@ def messageReceive(clientSocket):
                     chunkSizePosition = rollingBuffer.find(b'\r\n')
                     #get the next chunk's size
                     chunkSize = int(rollingBuffer[:chunkSizePosition].decode(), 16)
+                    if chunkSize == 0:
+                        break
                     #remove the chunk size number (along with the \r\n) from the buffer
                     rollingBuffer = rollingBuffer[(chunkSizePosition + len(b'\r\n')):]
             break
