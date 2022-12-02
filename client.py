@@ -71,11 +71,15 @@ def messageReceive(clientSocket):
                 #append the chunk to the buffer
                 rollingBuffer += chunk
                 #if the buffer has now have the full chunk in question
-                if len(rollingBuffer) >= chunkSize:
+                if len(rollingBuffer) >= chunkSize + 2:
                     #append the whole chunk onto the data chunks
                     dataChunks.append(rollingBuffer[:chunkSize])
                     #remove the chunk from the buffer (along with the trailing \r\n)
                     rollingBuffer = rollingBuffer[(chunkSize + len(b'\r\n')):]
+                    #if the chunk does not contain the next chunk size yet
+                    while rollingBuffer.find(b'\r\n') == -1:
+                        chunk = clientSocket.recv(1)
+                        rollingBuffer += chunk
                     #get the position after the last bit of the next chunk size number
                     chunkSizePosition = rollingBuffer.find(b'\r\n')
                     #get the next chunk's size
