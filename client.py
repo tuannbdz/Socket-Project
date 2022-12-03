@@ -1,16 +1,24 @@
+from threading import Thread
+import concurrent.futures
+import threading
+import time
+
 import socket
 import sys
 import os
 
 MAXBUF = 8192
 serverPort = 80
+curDir = os.path.dirname(os.path.realpath(__file__))
 
-def clientConnect(serverName):
+def initClientSocket():
     clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     clientSocket.settimeout(5)
-    clientSocket.connect((serverName, serverPort))
-    print("Connect successfully")
     return clientSocket
+
+def clientConnect(clientSocket, serverName):    
+    clientSocket.connect((serverName, serverPort))
+    print("Connects successfully")
 
 def clientRequest(clientSocket, requestURL, serverName):
     requestMessage = "GET " + requestURL + " HTTP/1.1\r\n"
@@ -28,6 +36,9 @@ def messageReceive(clientSocket):
     dataChunks = []
     while True:
         firstChunk = clientSocket.recv(MAXBUF)
+        if(firstChunk.find(b'404 Not Found') >= 0):
+            raise Exception('File not found in server...')
+        # print(firstChunk)
         rollingBuffer = firstChunk
         if(len(rollingBuffer) == 0):
             break
@@ -53,22 +64,15 @@ def messageReceive(clientSocket):
         elif (rollingBuffer.find(b'Transfer-Encoding: chunked')) >= 0:
             #append header
             dataChunks.append(rollingBuffer[:rollingBuffer.find(b'\r\n\r\n')] + b'\r\n\r\n')
-
             headerEndingPosition = rollingBuffer.find(b'\r\n\r\n') + len(b'\r\n\r\n')
             rollingBuffer = rollingBuffer[headerEndingPosition:]
-            #get the position (actually the position just after the final bit of the size number) of the first chunk size number within the file
             chunkSizePosition = rollingBuffer.find(b'\r\n')
-            #get the first chunk's size
             chunkSize = int(rollingBuffer[:chunkSizePosition].decode(), 16)
-            #remove the size (also remove the following \r\n
             rollingBuffer = rollingBuffer[(chunkSizePosition + len(b'\r\n')):]
-            # print(chunkSize, rollingBuffer)
             while True:
-                # the end message is encountered
                 if chunkSize == 0:
                     break
                 chunk = clientSocket.recv(2048)
-                print(chunk, rollingBuffer)
                 #append the chunk to the buffer
                 rollingBuffer += chunk
                 #if the buffer has now have the full chunk in question
@@ -93,7 +97,6 @@ def messageReceive(clientSocket):
             break
         else: break
     result = b''.join(dataChunks)
-    print(result)
     return result
 
 def writeData(receiveMessage, fileName):
@@ -102,7 +105,7 @@ def writeData(receiveMessage, fileName):
     data = b''
     for i in range(1, len(receiveMessage)):
         data += receiveMessage[i]
-    # print(headers.decode())
+    print(headers.decode())
     # print(data.decode())
     fileName = fileName.replace('%20', ' ')
     f = open(fileName, "wb")
@@ -131,36 +134,51 @@ def readSubFolder(clientSocket, recvMessage):
             if(fileName.find(b'.') >= 0):
                 queue.append(fileName)
     return queue
-
-
-if __name__ == '__main__':
-    requestURL = sys.argv[1]
-    serverName, fileName, isFolder = parseRequest(requestURL)
+ 
+def clientProcess(clientSocket, requestURL, serverName, fileName, isFolder):
+    time.sleep(0.2)
     try:
-        clientSocket = clientConnect(serverName)
+        clientConnect(clientSocket, serverName)
         clientRequest(clientSocket, requestURL, serverName)
-        receiveMessage = messageReceive(clientSocket)
-        # print(receiveMessage.decode())
-        # print('isFolder = ', isFolder   )
+        receiveMessage = messageReceive(clientSocket)    
         if(isFolder == False):
+            os.chdir(curDir)
             writeData(receiveMessage, serverName + '_' + fileName)
         else:
             folderName = serverName + '_' + fileName
             if(os.path.isdir(folderName) == False):
                 os.mkdir(serverName + '_' + fileName)
             os.chdir(folderName)
-            writeData(receiveMessage, 'index.html')
+            # writeData(receiveMessage, 'index.html')
             URLqueue = readSubFolder(clientSocket, receiveMessage)
             for request in URLqueue:
                 t = clientSocket.recv(1)
                 clientRequest(clientSocket, requestURL + request.decode(), serverName)
                 msg = messageReceive(clientSocket)
                 writeData(msg, request.decode())
-
-    except KeyboardInterrupt:
+    except Exception as e:
+        print(e)
         clientSocket.close()
-    # except:
-    #     print('Connection error!')
-    #     clientSocket.close()
     finally:
+        print(clientSocket, end = '')
+        print(' closed.')
         clientSocket.close()
+
+if __name__ == '__main__':
+    print(curDir)
+    if(len(sys.argv) <= 1):
+        print("Invalid arguments...")
+        sys.exit(0)
+    clientSockets = []
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(sys.argv) - 1) as executer:
+            future_to_url = {}    
+            for index in range(1, len(sys.argv)):
+                requestURL = sys.argv[index]
+                serverName, fileName, isFolder = parseRequest(requestURL)
+                cSocket = initClientSocket()
+                executer.submit(clientProcess, cSocket, requestURL, serverName, fileName, isFolder)
+    except KeyboardInterrupt:
+        print("Keyboard interrupt")
+    except Exception as e:
+        print(e)
