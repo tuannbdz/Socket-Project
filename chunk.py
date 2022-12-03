@@ -8,8 +8,8 @@ maxBuffer = 1024
 clientSocket = socket(AF_INET, SOCK_STREAM)
 clientSocket.connect(serverAddress)
 
-requestLine = 'GET /index.html HTTP/1.1\r\n'
-hostNameLine = 'Host: www.' + serverName + '\r\n'
+requestLine = 'GET http://www.httpwatch.com/httpgallery/chunked/chunkedimage.aspx HTTP/1.1\r\n'
+hostNameLine = 'Host: www.httpwatch.com' + serverName + '\r\n'
 connectionTypeLine = 'Connection: keep-alive\r\n'
 
 requestMessage = requestLine + hostNameLine + connectionTypeLine + '\r\n'
@@ -48,7 +48,7 @@ while True:
     #append the chunk to the buffer
     rollingBuffer += chunk
     #if the buffer has now have the full chunk in question
-    if len(rollingBuffer) >= chunkSize:
+    if len(rollingBuffer) >= chunkSize + 2:
         #append the whole chunk onto the data chunks
         dataChunks.append(rollingBuffer[:chunkSize])
         #remove the chunk from the buffer (along with the trailing \r\n)

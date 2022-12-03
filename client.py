@@ -62,12 +62,13 @@ def messageReceive(clientSocket):
             chunkSize = int(rollingBuffer[:chunkSizePosition].decode(), 16)
             #remove the size (also remove the following \r\n
             rollingBuffer = rollingBuffer[(chunkSizePosition + len(b'\r\n')):]
-            print(chunkSize, rollingBuffer)
+            # print(chunkSize, rollingBuffer)
             while True:
                 # the end message is encountered
                 if chunkSize == 0:
                     break
                 chunk = clientSocket.recv(2048)
+                print(chunk, rollingBuffer)
                 #append the chunk to the buffer
                 rollingBuffer += chunk
                 #if the buffer has now have the full chunk in question
