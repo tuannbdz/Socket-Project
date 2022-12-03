@@ -73,20 +73,23 @@ def messageReceive(clientSocket):
                 rollingBuffer += chunk
                 #if the buffer has now have the full chunk in question
                 if len(rollingBuffer) >= chunkSize + 2:
-                    #append the whole chunk onto the data chunks
-                    dataChunks.append(rollingBuffer[:chunkSize])
-                    #remove the chunk from the buffer (along with the trailing \r\n)
-                    rollingBuffer = rollingBuffer[(chunkSize + len(b'\r\n')):]
-                    #if the chunk does not contain the next chunk size yet
-                    while rollingBuffer.find(b'\r\n') == -1:
-                        chunk = clientSocket.recv(1)
-                        rollingBuffer += chunk
-                    #get the position after the last bit of the next chunk size number
-                    chunkSizePosition = rollingBuffer.find(b'\r\n')
-                    #get the next chunk's size
-                    chunkSize = int(rollingBuffer[:chunkSizePosition].decode(), 16)
-                    #remove the chunk size number (along with the \r\n) from the buffer
-                    rollingBuffer = rollingBuffer[(chunkSizePosition + len(b'\r\n')):]
+                    while len(rollingBuffer) >= chunkSize + 2:
+                        #append the whole chunk onto the data chunks
+                        dataChunks.append(rollingBuffer[:chunkSize])
+                        #remove the chunk from the buffer (along with the trailing \r\n)
+                        rollingBuffer = rollingBuffer[(chunkSize + len(b'\r\n')):]
+                        #if the chunk does not contain the next chunk size yet
+                        while rollingBuffer.find(b'\r\n') == -1:
+                            chunk = clientSocket.recv(1)
+                            rollingBuffer += chunk
+                        #get the position after the last bit of the next chunk size number
+                        chunkSizePosition = rollingBuffer.find(b'\r\n')
+                        #get the next chunk's size
+                        chunkSize = int(rollingBuffer[:chunkSizePosition].decode(), 16)
+                        if chunkSize == 0:
+                            break
+                        #remove the chunk size number (along with the \r\n) from the buffer
+                        rollingBuffer = rollingBuffer[(chunkSizePosition + len(b'\r\n')):]
             break
         else: break
     result = b''.join(dataChunks)
