@@ -25,11 +25,10 @@ def parseRequest(requestURL):
     fileName = requestURL.split('/')[-2]
     if(fileName == serverName):
         fileName = 'index.html'
-    isFolder = (fileName.find('.') == -1)
     requestURL = requestURL[:-1]
-    return (serverName, fileName, isFolder)
+    return (serverName, fileName)
  
-def clientProcess(clientSocket, requestURL, serverName, fileName, isFolder):
+def clientProcess(clientSocket, requestURL, serverName, fileName):
     time.sleep(0.2)
 
     def clientRequest(clientSocket, requestURL, serverName):
@@ -50,7 +49,6 @@ def clientProcess(clientSocket, requestURL, serverName, fileName, isFolder):
             firstChunk = clientSocket.recv(MAXBUF)
             if(firstChunk.find(b'404 Not Found') >= 0):
                 raise Exception('File not found in server...')
-            # print(firstChunk)
             rollingBuffer = firstChunk
             if(len(rollingBuffer) == 0):
                 break
@@ -124,10 +122,19 @@ def clientProcess(clientSocket, requestURL, serverName, fileName, isFolder):
                 begPos = line.find(b'\"', line.find(b'href='))
                 endPos = line.find(b'\"', begPos + 1)
                 fileName = line[begPos + 1 : endPos]
-                if(fileName.find(b'.') >= 0):
+                if(fileName.find(b'.') >= 0 and fileName.find(b'http') == -1):
                     queue.append(fileName)
         return queue
-    
+
+    def findFileType(receiveMessage):
+        fileType = ''
+        header = receiveMessage.split(b'\r\n\r\n')[0]
+        for line in header.split(b'\r\n'):
+            if(line.find(b'Content-Type: ') != -1):
+                fileType = line[line.find(b'/') + 1:]
+                break
+        return fileType
+
     try:
         #connect to socket
         clientSocket.connect((serverName, serverPort))
@@ -138,10 +145,16 @@ def clientProcess(clientSocket, requestURL, serverName, fileName, isFolder):
 
         #receive first message
         receiveMessage = messageReceive(clientSocket)
-        # print(receiveMessage)
+
         folderName = serverName + '_' + fileName
+
+        #push all items in subfolder to a queue
+        URLqueue = readSubFolder(clientSocket, receiveMessage)
+        isFolder = (len(URLqueue) != 0)
         if(isFolder == False):
             os.chdir(curDir)
+            if(fileName.find('.') == -1):
+                folderName = serverName + '_' + fileName + '.' + findFileType(receiveMessage).decode()
             #write received data to file
             writeData(receiveMessage, folderName)
         else:
@@ -152,9 +165,6 @@ def clientProcess(clientSocket, requestURL, serverName, fileName, isFolder):
             os.chdir(folderName)
 
             writeData(receiveMessage, 'index.html')
-
-            #push all items in subfolder to a queue
-            URLqueue = readSubFolder(clientSocket, receiveMessage)
 
             for request in URLqueue:
                 fileName = request.decode().replace('%20', ' ')
@@ -176,15 +186,13 @@ if __name__ == '__main__':
     if(len(sys.argv) <= 1):
         print("Invalid arguments...")
         sys.exit(0)
-    clientSockets = []
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(sys.argv) - 1) as executer:
-            future_to_url = {}    
             for index in range(1, len(sys.argv)):
                 requestURL = sys.argv[index]
-                serverName, fileName, isFolder = parseRequest(requestURL)
+                serverName, fileName = parseRequest(requestURL)
                 cSocket = initClientSocket()
-                executer.submit(clientProcess, cSocket, requestURL, serverName, fileName, isFolder)
+                executer.submit(clientProcess, cSocket, requestURL, serverName, fileName)
     except KeyboardInterrupt:
         print("Keyboard interrupt")
     except Exception as e:

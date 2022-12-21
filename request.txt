@@ -1,0 +1,1 @@
+python ./client.py http://example.com/ http://example.com/index.html http://web.stanford.edu/dept/its/support/techtraining/techbriefing-media/Intro_Net_91407.ppt http://web.stanford.edu/class/cs224w/slides/01-intro.pdf http://web.stanford.edu/class/cs143/handouts/ http://web.stanford.edu/class/cs231a/course_notes/
