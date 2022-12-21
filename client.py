@@ -23,7 +23,6 @@ def parseRequest(requestURL):
     fileName = requestURL.split('/')[-2]
     if(fileName == serverName):
         fileName = 'index.html'
-    requestURL = requestURL[:-1]
     return (serverName, fileName)
  
 def clientProcess(clientSocket, requestURL, serverName, fileName):
