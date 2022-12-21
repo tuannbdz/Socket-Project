@@ -17,13 +17,6 @@ def initClientSocket():
     clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     clientSocket.settimeout(5)
     return clientSocket
-    
-def parseRequest(requestURL):
-    serverName = requestURL[requestURL.find('//') + 2 : requestURL.find('/', requestURL.find('//') + 2)]
-    fileName = requestURL.split('/')[-2]
-    if(fileName == serverName):
-        fileName = 'index.html'
-    return (serverName, fileName)
  
 def clientProcess(clientSocket, requestURL, serverName, fileName):
     time.sleep(0.2)
@@ -147,7 +140,6 @@ def clientProcess(clientSocket, requestURL, serverName, fileName):
 
         #push all items in subfolder to a queue
         URLqueue = readSubFolder(clientSocket, receiveMessage)
-        print(requestURL)
         
         isFolder = (len(URLqueue) != 0)
         if(isFolder == False):
@@ -191,7 +183,11 @@ if __name__ == '__main__':
                 requestURL = sys.argv[index]
                 if(requestURL[-1] != '/'):
                     requestURL += '/'
-                serverName, fileName = parseRequest(requestURL)
+                serverName = requestURL[requestURL.find('//') + 2 : requestURL.find('/', requestURL.find('//') + 2)]
+                fileName = requestURL.split('/')[-2]
+                if(fileName == serverName):
+                    fileName = 'index.html'
+                else: requestURL = requestURL[:-1]
                 cSocket = initClientSocket()
                 executer.submit(clientProcess, cSocket, requestURL, serverName, fileName)
     except KeyboardInterrupt:
