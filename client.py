@@ -19,8 +19,6 @@ def initClientSocket():
     return clientSocket
     
 def parseRequest(requestURL):
-    if(requestURL[-1] != '/'):
-        requestURL += '/'
     serverName = requestURL[requestURL.find('//') + 2 : requestURL.find('/', requestURL.find('//') + 2)]
     fileName = requestURL.split('/')[-2]
     if(fileName == serverName):
@@ -150,6 +148,8 @@ def clientProcess(clientSocket, requestURL, serverName, fileName):
 
         #push all items in subfolder to a queue
         URLqueue = readSubFolder(clientSocket, receiveMessage)
+        print(requestURL)
+        
         isFolder = (len(URLqueue) != 0)
         if(isFolder == False):
             os.chdir(curDir)
@@ -190,6 +190,8 @@ if __name__ == '__main__':
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(sys.argv) - 1) as executer:
             for index in range(1, len(sys.argv)):
                 requestURL = sys.argv[index]
+                if(requestURL[-1] != '/'):
+                    requestURL += '/'
                 serverName, fileName = parseRequest(requestURL)
                 cSocket = initClientSocket()
                 executer.submit(clientProcess, cSocket, requestURL, serverName, fileName)
